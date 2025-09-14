@@ -12,7 +12,7 @@ Author: Precision Farming Team
 Date: 2024
 License: MIT
 """
-# Rule + ML crop suitability
+
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional, Union
@@ -364,7 +364,7 @@ class CropRecommendationEngine:
                 factors.append(f"⚠ pH ({soil_ph:.1f}) is not optimal (needs {ph_min}-{ph_max})")
             else:
                 nutrient_score = 5.0
-                factors.append(f"⚠ Low {nutrient} levels - fertilization needed")
+                factors.append(f"⚠ Low {nutrient} levels - supplementation needed")
             
             score += nutrient_score
         
@@ -372,31 +372,31 @@ class CropRecommendationEngine:
         soil_texture = soil_data.get('texture_class', 'loam')
         if soil_texture in crop_profile.soil_texture_preference:
             texture_score = 20.0
-            factors.append(f"✓ Soil texture ({soil_texture}) is preferred")
-        elif soil_texture in ['loam', 'silt_loam', 'clay_loam']:  # Generally good
+            factors.append(f"✓ {soil_texture.title()} soil is preferred for {crop_profile.name}")
+        elif len(crop_profile.soil_texture_preference) == 0:  # No preference
             texture_score = 15.0
-            factors.append(f"⚠ Soil texture ({soil_texture}) is acceptable")
+            factors.append("○ Soil texture is acceptable")
         else:
-            texture_score = 8.0
-            factors.append(f"⚠ Soil texture ({soil_texture}) may pose challenges")
+            texture_score = 10.0
+            factors.append(f"⚠ {soil_texture.title()} soil is not optimal")
         
         score += texture_score
         
-        # Organic matter consideration (10 points)
+        # Organic matter bonus (10 points)
         organic_matter = soil_data.get('organic_matter_percent', 2.0)
         if organic_matter >= 3.0:
             om_score = 10.0
-            factors.append("✓ Good organic matter content")
+            factors.append(f"✓ Good organic matter content ({organic_matter:.1f}%)")
         elif organic_matter >= 2.0:
             om_score = 7.0
-            factors.append("⚠ Adequate organic matter")
+            factors.append(f"○ Adequate organic matter ({organic_matter:.1f}%)")
         else:
             om_score = 3.0
-            factors.append("⚠ Low organic matter - soil improvement needed")
+            factors.append(f"⚠ Low organic matter ({organic_matter:.1f}%)")
         
         score += om_score
         
-        return min(score, max_score), factors
+        return min(100.0, score), factors
     
     def calculate_climate_compatibility(self, weather_data: WeatherData,
                                       crop_profile: CropProfile) -> Tuple[float, List[str]]:
@@ -412,20 +412,17 @@ class CropRecommendationEngine:
         """
         score = 0.0
         factors = []
-        max_score = 100.0
         
         # Temperature compatibility (40 points)
         avg_temp = weather_data.avg_temperature
-        min_temp_ok = avg_temp >= crop_profile.min_temperature
-        max_temp_ok = avg_temp <= crop_profile.max_temperature
-        optimal_min, optimal_max = crop_profile.optimal_temp_range
+        min_temp, max_temp = crop_profile.optimal_temp_range
         
-        if optimal_min <= avg_temp <= optimal_max:
+        if min_temp <= avg_temp <= max_temp:
             temp_score = 40.0
             factors.append(f"✓ Temperature ({avg_temp:.1f}°C) is optimal")
-        elif min_temp_ok and max_temp_ok:
-            temp_score = 30.0
-            factors.append(f"⚠ Temperature ({avg_temp:.1f}°C) is acceptable")
+        elif crop_profile.min_temperature <= avg_temp <= crop_profile.max_temperature:
+            temp_score = 25.0
+            factors.append(f"○ Temperature ({avg_temp:.1f}°C) is acceptable")
         else:
             temp_score = 10.0
             factors.append(f"⚠ Temperature ({avg_temp:.1f}°C) may be challenging")
@@ -436,20 +433,26 @@ class CropRecommendationEngine:
         available_water = weather_data.growing_season_rainfall
         required_water = crop_profile.water_requirement
         
-        if available_water >= required_water:
+        water_ratio = available_water / required_water
+        if water_ratio >= 1.0:
             water_score = 35.0
-            factors.append("✓ Sufficient rainfall expected")
-        elif available_water >= required_water * 0.8:
-            water_score = 25.0
-            factors.append("⚠ Rainfall adequate - minor irrigation may be needed")
-        elif available_water >= required_water * 0.6:
-            water_score = 15.0
-            factors.append("⚠ Irrigation will be necessary")
+            factors.append("✓ Sufficient rainfall for crop needs")
+        elif water_ratio >= 0.8:
+            water_score = 28.0
+            factors.append("○ Adequate rainfall, minimal irrigation needed")
+        elif water_ratio >= 0.6:
+            water_score = 20.0
+            factors.append("⚠ Moderate irrigation will be required")
         else:
-            water_score = 5.0
-            factors.append("⚠ Significant irrigation required")
+            water_score = 10.0
+            factors.append("⚠ Significant irrigation will be required")
         
-        score += water_score
+        # Adjust for drought tolerance
+        if crop_profile.drought_tolerance == "high" and water_ratio < 0.8:
+            water_score += 10.0
+            factors.append("✓ Crop has good drought tolerance")
+        
+        score += min(35.0, water_score)
         
         # Growing season compatibility (15 points)
         frost_free = weather_data.frost_free_days
@@ -460,249 +463,275 @@ class CropRecommendationEngine:
             factors.append("✓ Sufficient growing season length")
         elif frost_free >= maturity_days:
             season_score = 12.0
-            factors.append("⚠ Growing season length is adequate")
+            factors.append("○ Adequate growing season length")
         else:
-            season_score = 3.0
-            factors.append("⚠ Growing season may be too short")
+            season_score = 5.0
+            factors.append("⚠ Short growing season may be limiting")
         
         score += season_score
         
-        # Solar radiation and photoperiod (10 points)
-        solar_rad = weather_data.solar_radiation
-        if solar_rad >= 15:  # High solar radiation
+        # Solar radiation compatibility (10 points)
+        if weather_data.solar_radiation >= 15:  # MJ/m2/day
             solar_score = 10.0
-            factors.append("✓ Excellent solar radiation")
-        elif solar_rad >= 10:
+            factors.append("✓ Good solar radiation levels")
+        elif weather_data.solar_radiation >= 12:
             solar_score = 8.0
-            factors.append("⚠ Good solar radiation")
+            factors.append("○ Adequate solar radiation")
         else:
             solar_score = 5.0
             factors.append("⚠ Limited solar radiation")
         
         score += solar_score
         
-        return min(score, max_score), factors
+        return min(100.0, score), factors
     
     def calculate_economic_viability(self, crop_profile: CropProfile,
-                                   farm_size_ha: float,
-                                   market_factors: Optional[Dict] = None) -> Tuple[float, Dict]:
+                                   farm_size: float,
+                                   market_conditions: Optional[Dict] = None) -> Tuple[float, Dict]:
         """
-        Calculate economic viability score and financial projections
+        Calculate economic viability score and metrics
         
         Args:
-            crop_profile: Crop requirements profile
-            farm_size_ha: Farm size in hectares
-            market_factors: Optional market condition adjustments
+            crop_profile: Crop profile with cost data
+            farm_size: Farm size in hectares
+            market_conditions: Optional market price adjustments
             
         Returns:
-            Tuple of (economic_score, financial_details)
+            Tuple of (economic_score, financial_metrics)
         """
-        # Base costs and revenues
-        total_costs = (
+        # Calculate costs per hectare
+        total_cost_per_ha = (
             crop_profile.seed_cost_per_ha +
             crop_profile.fertilizer_cost_per_ha +
             crop_profile.labor_cost_per_ha +
             crop_profile.machinery_cost_per_ha
-        ) * farm_size_ha
-        
-        gross_revenue = (
-            crop_profile.expected_yield_per_ha *
-            crop_profile.market_price_per_tonne *
-            farm_size_ha
         )
         
-        # Apply market factors if provided
-        if market_factors:
-            price_adjustment = market_factors.get('price_multiplier', 1.0)
-            cost_adjustment = market_factors.get('cost_multiplier', 1.0)
-            yield_adjustment = market_factors.get('yield_multiplier', 1.0)
-            
-            gross_revenue *= price_adjustment * yield_adjustment
-            total_costs *= cost_adjustment
+        # Calculate revenue per hectare
+        market_price = crop_profile.market_price_per_tonne
+        if market_conditions and crop_profile.crop_type.value in market_conditions:
+            market_price *= market_conditions[crop_profile.crop_type.value]
         
-        net_profit = gross_revenue - total_costs
-        roi = (net_profit / total_costs * 100) if total_costs > 0 else 0
-        profit_per_ha = net_profit / farm_size_ha if farm_size_ha > 0 else 0
+        revenue_per_ha = crop_profile.expected_yield_per_ha * market_price
+        profit_per_ha = revenue_per_ha - total_cost_per_ha
         
-        # Calculate economic score (0-100)
-        if roi >= 50:
+        # Calculate total farm metrics
+        total_cost = total_cost_per_ha * farm_size
+        total_revenue = revenue_per_ha * farm_size
+        total_profit = profit_per_ha * farm_size
+        
+        # Calculate financial ratios
+        roi = (profit_per_ha / total_cost_per_ha) * 100 if total_cost_per_ha > 0 else 0
+        profit_margin = (profit_per_ha / revenue_per_ha) * 100 if revenue_per_ha > 0 else 0
+        
+        # Economic score based on profitability
+        if roi >= 30:
             economic_score = 100.0
-        elif roi >= 30:
+        elif roi >= 20:
             economic_score = 80.0
-        elif roi >= 15:
+        elif roi >= 10:
             economic_score = 60.0
-        elif roi >= 5:
-            economic_score = 40.0
         elif roi >= 0:
-            economic_score = 20.0
+            economic_score = 40.0
         else:
-            economic_score = 0.0
+            economic_score = 20.0
         
-        financial_details = {
-            'total_costs': total_costs,
-            'gross_revenue': gross_revenue,
-            'net_profit': net_profit,
+        financial_metrics = {
+            'cost_per_ha': total_cost_per_ha,
+            'revenue_per_ha': revenue_per_ha,
+            'profit_per_ha': profit_per_ha,
+            'total_cost': total_cost,
+            'total_revenue': total_revenue,
+            'total_profit': total_profit,
             'roi_percent': roi,
-            'profit_per_hectare': profit_per_ha,
-            'break_even_yield': total_costs / (crop_profile.market_price_per_tonne * farm_size_ha),
-            'break_even_price': total_costs / (crop_profile.expected_yield_per_ha * farm_size_ha)
+            'profit_margin_percent': profit_margin,
+            'breakeven_price': total_cost_per_ha / crop_profile.expected_yield_per_ha
         }
         
-        return economic_score, financial_details
+        return economic_score, financial_metrics
     
-    def assess_risks(self, crop_profile: CropProfile,
-                    weather_data: WeatherData,
-                    soil_data: Dict) -> Tuple[float, List[str]]:
+    def calculate_risk_assessment(self, crop_profile: CropProfile,
+                                weather_data: WeatherData,
+                                soil_data: Dict) -> Tuple[float, List[str]]:
         """
-        Assess various risks associated with crop choice
+        Calculate risk assessment score (higher score = lower risk)
         
         Args:
-            crop_profile: Crop requirements profile
-            weather_data: Weather and climate data
+            crop_profile: Crop profile with risk factors
+            weather_data: Weather information
             soil_data: Soil characteristics
             
         Returns:
             Tuple of (risk_score, risk_factors)
         """
         risk_factors = []
-        total_risk = 0.0
+        risk_score = 100.0  # Start with perfect score, deduct for risks
         
-        # Weather risks
-        weather_risk_value = {"low": 10, "medium": 20, "high": 35}.get(crop_profile.weather_risk, 20)
-        if weather_data.annual_rainfall < crop_profile.water_requirement * 0.5:
-            weather_risk_value += 15
-            risk_factors.append("High drought risk due to low rainfall")
+        # Pest risk assessment
+        pest_risk_map = {"low": 0, "medium": 10, "high": 20}
+        pest_deduction = pest_risk_map.get(crop_profile.pest_risk, 15)
+        risk_score -= pest_deduction
+        if pest_deduction > 0:
+            risk_factors.append(f"Pest risk: {crop_profile.pest_risk}")
         
-        # Pest and disease risks
-        pest_risk_value = {"low": 5, "medium": 15, "high": 25}.get(crop_profile.pest_risk, 15)
-        disease_risk_value = {"low": 5, "medium": 15, "high": 25}.get(crop_profile.disease_risk, 15)
+        # Disease risk assessment
+        disease_risk_map = {"low": 0, "medium": 10, "high": 20}
+        disease_deduction = disease_risk_map.get(crop_profile.disease_risk, 15)
+        risk_score -= disease_deduction
+        if disease_deduction > 0:
+            risk_factors.append(f"Disease risk: {crop_profile.disease_risk}")
         
-        # Soil-related risks
-        soil_risk = 0
-        if soil_data.get('ph_level', 7.0) < 5.0 or soil_data.get('ph_level', 7.0) > 8.5:
-            soil_risk += 10
-            risk_factors.append("pH level may stress plants")
+        # Weather risk assessment
+        weather_risk_map = {"low": 0, "medium": 10, "high": 20}
+        weather_deduction = weather_risk_map.get(crop_profile.weather_risk, 15)
+        risk_score -= weather_deduction
+        if weather_deduction > 0:
+            risk_factors.append(f"Weather risk: {crop_profile.weather_risk}")
         
-        if soil_data.get('organic_matter_percent', 2.0) < 1.0:
-            soil_risk += 10
-            risk_factors.append("Low organic matter increases production risks")
+        # Soil-specific risks
+        soil_ph = soil_data.get('ph_level', 7.0)
+        if soil_ph < 5.5 or soil_ph > 8.5:
+            risk_score -= 15
+            risk_factors.append("Extreme pH levels increase risk")
         
-        # Economic risks (market volatility)
-        market_risk = 15  # Base market risk
-        if crop_profile.market_price_per_tonne > 400:  # High-value crops more volatile
-            market_risk += 10
-            risk_factors.append("High market price volatility")
+        # Water stress risk
+        water_ratio = weather_data.growing_season_rainfall / crop_profile.water_requirement
+        if water_ratio < 0.5:
+            risk_score -= 20
+            risk_factors.append("High water stress risk")
+        elif water_ratio < 0.7:
+            risk_score -= 10
+            risk_factors.append("Moderate water stress risk")
         
-        total_risk = weather_risk_value + pest_risk_value + disease_risk_value + soil_risk + market_risk
-        risk_score = max(0, 100 - total_risk)  # Convert to positive score
+        # Temperature stress risk
+        if weather_data.max_temperature > crop_profile.max_temperature:
+            risk_score -= 15
+            risk_factors.append("Heat stress risk")
+        if weather_data.min_temperature < crop_profile.min_temperature:
+            risk_score -= 15
+            risk_factors.append("Cold stress risk")
         
-        return risk_score, risk_factors
+        return max(0.0, risk_score), risk_factors
     
     def generate_management_recommendations(self, crop_profile: CropProfile,
                                           soil_data: Dict,
-                                          weather_data: WeatherData) -> Dict[str, List[str]]:
+                                          weather_data: WeatherData,
+                                          compatibility_scores: Dict) -> Dict[str, List[str]]:
         """
         Generate specific management recommendations
         
-        Args:
-            crop_profile: Crop requirements profile
-            soil_data: Soil characteristics
-            weather_data: Weather and climate data
-            
         Returns:
-            Dictionary with categorized recommendations
+            Dictionary with different types of recommendations
         """
         recommendations = {
             'planting': [],
             'fertilization': [],
             'irrigation': [],
             'pest_management': [],
-            'harvest': []
+            'general': []
         }
         
         # Planting recommendations
-        recommendations['planting'].append(
-            f"Plant between day {crop_profile.planting_window[0]} and "
-            f"{crop_profile.planting_window[1]} of the year"
-        )
-        
-        if soil_data.get('texture_class') == 'clay':
-            recommendations['planting'].append("Ensure proper drainage before planting")
-        elif soil_data.get('texture_class') in ['sand', 'loamy_sand']:
-            recommendations['planting'].append("Consider deeper planting for better root establishment")
-        
-        # Fertilization recommendations
-        soil_n = soil_data.get('nitrogen_ppm', 30)
-        if soil_n < crop_profile.nitrogen_requirement / 10:
-            recommendations['fertilization'].append(
-                f"Apply {crop_profile.nitrogen_requirement - (soil_n * 10):.0f} kg/ha nitrogen"
+        if compatibility_scores['soil'] < 60:
+            recommendations['planting'].append(
+                "Consider soil amendments before planting"
             )
         
-        soil_p = soil_data.get('phosphorus_ppm', 25)
+        if weather_data.frost_free_days < crop_profile.days_to_maturity + 20:
+            recommendations['planting'].append(
+                "Plant early in the season to ensure adequate growing time"
+            )
+        
+        recommendations['planting'].append(
+            f"Optimal planting window: {self._julian_to_date(crop_profile.planting_window[0])} to "
+            f"{self._julian_to_date(crop_profile.planting_window[1])}"
+        )
+        
+        # Fertilization recommendations
+        soil_n = soil_data.get('nitrogen_ppm', 0)
+        if soil_n < crop_profile.nitrogen_requirement / 10:
+            recommendations['fertilization'].append(
+                f"Apply {crop_profile.nitrogen_requirement:.0f} kg/ha nitrogen fertilizer"
+            )
+        
+        soil_p = soil_data.get('phosphorus_ppm', 0)
         if soil_p < crop_profile.phosphorus_requirement / 2:
             recommendations['fertilization'].append(
-                f"Apply {crop_profile.phosphorus_requirement - (soil_p * 2):.0f} kg/ha phosphorus"
+                f"Apply {crop_profile.phosphorus_requirement:.0f} kg/ha phosphorus fertilizer"
             )
         
         # Irrigation recommendations
-        if weather_data.growing_season_rainfall < crop_profile.water_requirement:
-            deficit = crop_profile.water_requirement - weather_data.growing_season_rainfall
+        water_ratio = weather_data.growing_season_rainfall / crop_profile.water_requirement
+        if water_ratio < 0.8:
+            irrigation_need = crop_profile.water_requirement - weather_data.growing_season_rainfall
             recommendations['irrigation'].append(
-                f"Plan for {deficit:.0f}mm supplemental irrigation"
+                f"Plan for {irrigation_need:.0f}mm supplemental irrigation"
             )
         
-        if crop_profile.drought_tolerance == "low":
-            recommendations['irrigation'].append("Monitor soil moisture closely")
-        
         # Pest management
-        if crop_profile.pest_risk == "high":
-            recommendations['pest_management'].append("Implement integrated pest management")
-            recommendations['pest_management'].append("Regular field scouting recommended")
+        if crop_profile.pest_risk in ['medium', 'high']:
+            recommendations['pest_management'].append(
+                "Implement integrated pest management (IPM) strategies"
+            )
+            recommendations['pest_management'].append(
+                "Monitor regularly for pest activity"
+            )
         
-        # Harvest timing
-        recommendations['harvest'].append(
-            f"Harvest approximately {crop_profile.days_to_maturity} days after planting"
-        )
+        # General recommendations
+        if soil_data.get('organic_matter_percent', 2.0) < 2.0:
+            recommendations['general'].append(
+                "Increase organic matter through compost or cover crops"
+            )
         
         return recommendations
     
+    def _julian_to_date(self, julian_day: int) -> str:
+        """Convert Julian day to MM-DD format"""
+        try:
+            date = datetime(2024, 1, 1) + timedelta(days=julian_day - 1)
+            return date.strftime("%m-%d")
+        except:
+            return "N/A"
+    
     def recommend_crops(self, soil_data: Dict,
                        weather_data: WeatherData,
-                       farm_size_ha: float = 10.0,
+                       farm_size: float = 10.0,
                        top_n: int = 5,
-                       market_factors: Optional[Dict] = None) -> List[CropRecommendation]:
+                       market_conditions: Optional[Dict] = None) -> List[CropRecommendation]:
         """
-        Generate top crop recommendations based on all factors
+        Generate crop recommendations based on all factors
         
         Args:
-            soil_data: Dictionary with soil characteristics
-            weather_data: Weather and climate information
-            farm_size_ha: Farm size in hectares
+            soil_data: Soil analysis data
+            weather_data: Weather and climate data
+            farm_size: Farm size in hectares
             top_n: Number of top recommendations to return
-            market_factors: Optional market condition adjustments
+            market_conditions: Optional market price multipliers
             
         Returns:
             List of CropRecommendation objects, sorted by suitability
         """
+        logger.info("Generating crop recommendations...")
+        
         recommendations = []
         
         for crop_profile in self.crop_db.get_all_crops():
-            # Calculate individual scores
-            soil_score, soil_factors = self.calculate_soil_compatibility(soil_data, crop_profile)
-            climate_score, climate_factors = self.calculate_climate_compatibility(weather_data, crop_profile)
-            economic_score, financial_details = self.calculate_economic_viability(
-                crop_profile, farm_size_ha, market_factors
+            # Calculate compatibility scores
+            soil_score, soil_factors = self.calculate_soil_compatibility(
+                soil_data, crop_profile
             )
-            risk_score, risk_factors = self.assess_risks(crop_profile, weather_data, soil_data)
+            climate_score, climate_factors = self.calculate_climate_compatibility(
+                weather_data, crop_profile
+            )
+            economic_score, financial_metrics = self.calculate_economic_viability(
+                crop_profile, farm_size, market_conditions
+            )
+            risk_score, risk_factors = self.calculate_risk_assessment(
+                crop_profile, weather_data, soil_data
+            )
             
             # Calculate overall suitability score (weighted average)
-            weights = {
-                'soil': 0.30,
-                'climate': 0.30,
-                'economic': 0.25,
-                'risk': 0.15
-            }
-            
+            weights = {'soil': 0.3, 'climate': 0.3, 'economic': 0.25, 'risk': 0.15}
             overall_score = (
                 soil_score * weights['soil'] +
                 climate_score * weights['climate'] +
@@ -723,46 +752,58 @@ class CropRecommendationEngine:
                 suitability_level = SuitabilityLevel.NOT_SUITABLE
             
             # Generate management recommendations
+            compatibility_scores = {
+                'soil': soil_score,
+                'climate': climate_score,
+                'economic': economic_score,
+                'risk': risk_score
+            }
+            
             management_recs = self.generate_management_recommendations(
-                crop_profile, soil_data, weather_data
+                crop_profile, soil_data, weather_data, compatibility_scores
             )
             
-            # Compile positive and negative factors
-            positive_factors = [f for f in soil_factors + climate_factors if f.startswith('✓')]
-            negative_factors = [f for f in soil_factors + climate_factors + risk_factors 
-                              if f.startswith('⚠')]
+            # Combine all recommendations
+            all_recommendations = []
+            for rec_type, rec_list in management_recs.items():
+                all_recommendations.extend(rec_list)
             
-            # Identify limiting factors
+            # Identify positive and negative factors
+            positive_factors = []
+            negative_factors = []
             limiting_factors = []
-            if soil_score < 50:
-                limiting_factors.append("Soil conditions")
-            if climate_score < 50:
-                limiting_factors.append("Climate conditions")
-            if economic_score < 40:
-                limiting_factors.append("Economic viability")
-            if risk_score < 60:
-                limiting_factors.append("High production risks")
             
-            # Calculate confidence based on data completeness and score consistency
-            confidence = min(95, overall_score * 0.8 + 20)  # Simplified confidence calculation
+            # Process soil factors
+            for factor in soil_factors:
+                if factor.startswith('✓'):
+                    positive_factors.append(factor)
+                elif factor.startswith('⚠'):
+                    negative_factors.append(factor)
             
+            # Process climate factors
+            for factor in climate_factors:
+                if factor.startswith('✓'):
+                    positive_factors.append(factor)
+                elif factor.startswith('⚠'):
+                    if any(word in factor.lower() for word in ['short', 'limited', 'challenging']):
+                        limiting_factors.append(factor)
+                    else:
+                        negative_factors.append(factor)
+            
+            # Create recommendation object
             recommendation = CropRecommendation(
                 crop_profile=crop_profile,
                 suitability_score=overall_score,
                 suitability_level=suitability_level,
-                confidence=confidence,
+                confidence=min(95.0, overall_score * 1.1),  # Confidence slightly higher than score
                 soil_match_score=soil_score,
                 climate_match_score=climate_score,
                 economic_score=economic_score,
                 risk_score=risk_score,
                 planting_recommendations=management_recs['planting'],
-                management_tips=(
-                    management_recs['fertilization'] +
-                    management_recs['irrigation'] +
-                    management_recs['pest_management']
-                ),
+                management_tips=all_recommendations,
                 risk_mitigation=risk_factors,
-                expected_roi=financial_details['roi_percent'],
+                expected_roi=financial_metrics.get('roi_percent', 0),
                 positive_factors=positive_factors,
                 negative_factors=negative_factors,
                 limiting_factors=limiting_factors
@@ -773,32 +814,29 @@ class CropRecommendationEngine:
         # Sort by suitability score and return top N
         recommendations.sort(key=lambda x: x.suitability_score, reverse=True)
         
-        logger.info(f"Generated {len(recommendations)} crop recommendations")
+        logger.info(f"Generated {len(recommendations)} recommendations")
         return recommendations[:top_n]
     
-    def train_ml_model(self, training_data: pd.DataFrame) -> Dict[str, float]:
+    def train_ml_model(self, training_data: pd.DataFrame):
         """
         Train machine learning model for crop recommendation
         
         Args:
-            training_data: DataFrame with historical crop success data
-            
-        Returns:
-            Dictionary with training metrics
+            training_data: DataFrame with features and target crop labels
         """
-        logger.info("Training ML model for crop recommendations")
+        logger.info("Training ML model for crop recommendation...")
         
         # Prepare features
         feature_columns = [
             'ph_level', 'nitrogen_ppm', 'phosphorus_ppm', 'potassium_ppm',
-            'organic_matter_percent', 'sand_percent', 'silt_percent', 'clay_percent',
-            'avg_temperature', 'annual_rainfall', 'humidity'
+            'organic_matter_percent', 'avg_temperature', 'annual_rainfall',
+            'growing_season_rainfall', 'frost_free_days'
         ]
         
         X = training_data[feature_columns]
-        y = training_data['best_crop']  # Target variable
+        y = training_data['recommended_crop']
         
-        # Encode labels
+        # Encode target labels
         y_encoded = self.label_encoder.fit_transform(y)
         
         # Split data
@@ -810,12 +848,12 @@ class CropRecommendationEngine:
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         
-        # Train Random Forest model
+        # Train model
         self.ml_model = RandomForestClassifier(
             n_estimators=100,
             max_depth=10,
-            min_samples_split=5,
-            random_state=42
+            random_state=42,
+            class_weight='balanced'
         )
         
         self.ml_model.fit(X_train_scaled, y_train)
@@ -824,203 +862,155 @@ class CropRecommendationEngine:
         y_pred = self.ml_model.predict(X_test_scaled)
         accuracy = accuracy_score(y_test, y_pred)
         
+        logger.info(f"Model trained with accuracy: {accuracy:.3f}")
+        
         # Feature importance
-        feature_importance = dict(zip(feature_columns, self.ml_model.feature_importances_))
+        feature_importance = pd.DataFrame({
+            'feature': feature_columns,
+            'importance': self.ml_model.feature_importances_
+        }).sort_values('importance', ascending=False)
         
-        logger.info(f"Model training completed. Accuracy: {accuracy:.3f}")
-        
-        return {
-            'accuracy': accuracy,
-            'feature_importance': feature_importance,
-            'n_samples': len(training_data)
-        }
+        logger.info("Feature importance:")
+        for _, row in feature_importance.head().iterrows():
+            logger.info(f"  {row['feature']}: {row['importance']:.3f}")
     
-    def predict_ml_recommendation(self, soil_data: Dict, weather_data: WeatherData) -> Dict:
+    def predict_with_ml(self, soil_data: Dict, weather_data: WeatherData) -> List[Tuple[str, float]]:
         """
-        Use ML model to predict best crop recommendation
+        Use ML model to predict suitable crops
         
         Args:
-            soil_data: Dictionary with soil characteristics
-            weather_data: Weather and climate information
+            soil_data: Soil characteristics
+            weather_data: Weather information
             
         Returns:
-            Dictionary with ML prediction results
+            List of (crop_name, probability) tuples
         """
-        if self.ml_model is None:
-            raise ValueError("ML model not trained. Call train_ml_model() first.")
+        if not self.ml_model:
+            logger.warning("ML model not trained. Use train_ml_model() first.")
+            return []
         
-        # Prepare input features
+        # Prepare features
         features = np.array([[
-            soil_data.get('ph_level', 7.0),
+            soil_data.get('ph_level', 6.5),
             soil_data.get('nitrogen_ppm', 30),
-            soil_data.get('phosphorus_ppm', 25),
+            soil_data.get('phosphorus_ppm', 20),
             soil_data.get('potassium_ppm', 150),
-            soil_data.get('organic_matter_percent', 2.0),
-            soil_data.get('sand_percent', 40),
-            soil_data.get('silt_percent', 35),
-            soil_data.get('clay_percent', 25),
+            soil_data.get('organic_matter_percent', 2.5),
             weather_data.avg_temperature,
             weather_data.annual_rainfall,
-            weather_data.humidity
+            weather_data.growing_season_rainfall,
+            weather_data.frost_free_days
         ]])
         
         # Scale features
         features_scaled = self.scaler.transform(features)
         
-        # Make prediction
-        prediction = self.ml_model.predict(features_scaled)[0]
+        # Get predictions
         probabilities = self.ml_model.predict_proba(features_scaled)[0]
         
-        # Decode prediction
-        predicted_crop = self.label_encoder.inverse_transform([prediction])[0]
-        confidence = max(probabilities) * 100
+        # Convert back to crop names
+        crop_predictions = []
+        for i, prob in enumerate(probabilities):
+            crop_name = self.label_encoder.inverse_transform([i])[0]
+            crop_predictions.append((crop_name, prob))
         
-        # Get top 3 predictions
-        top_indices = np.argsort(probabilities)[::-1][:3]
-        top_predictions = []
+        # Sort by probability
+        crop_predictions.sort(key=lambda x: x[1], reverse=True)
         
-        for idx in top_indices:
-            crop_name = self.label_encoder.inverse_transform([idx])[0]
-            probability = probabilities[idx] * 100
-            top_predictions.append({'crop': crop_name, 'probability': probability})
-        
-        return {
-            'predicted_crop': predicted_crop,
-            'confidence': confidence,
-            'top_predictions': top_predictions
-        }
+        return crop_predictions[:5]  # Top 5 predictions
     
     def save_model(self, model_path: str):
-        """Save trained model to file"""
-        if self.ml_model is None:
-            raise ValueError("No model to save. Train model first.")
-        
-        model_data = {
-            'model': self.ml_model,
-            'scaler': self.scaler,
-            'label_encoder': self.label_encoder
-        }
-        
-        joblib.dump(model_data, model_path)
-        logger.info(f"Model saved to {model_path}")
+        """Save trained model and scalers"""
+        if self.ml_model:
+            joblib.dump({
+                'model': self.ml_model,
+                'scaler': self.scaler,
+                'label_encoder': self.label_encoder
+            }, model_path)
+            logger.info(f"Model saved to {model_path}")
     
     def load_model(self, model_path: str):
-        """Load pre-trained model from file"""
-        model_data = joblib.load(model_path)
-        
-        self.ml_model = model_data['model']
-        self.scaler = model_data['scaler']
-        self.label_encoder = model_data['label_encoder']
-        
-        logger.info(f"Model loaded from {model_path}")
+        """Load pre-trained model and scalers"""
+        try:
+            model_data = joblib.load(model_path)
+            self.ml_model = model_data['model']
+            self.scaler = model_data['scaler']
+            self.label_encoder = model_data['label_encoder']
+            logger.info(f"Model loaded from {model_path}")
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
 
 
-def create_sample_training_data() -> pd.DataFrame:
-    """Create sample training data for ML model"""
-    np.random.seed(42)
-    
-    crops = ['wheat', 'corn', 'rice', 'soybean']
-    n_samples = 1000
-    
-    data = []
-    for _ in range(n_samples):
-        # Generate random soil and weather data
-        ph = np.random.normal(6.5, 0.8)
-        nitrogen = np.random.normal(40, 15)
-        phosphorus = np.random.normal(30, 10)
-        potassium = np.random.normal(200, 50)
-        organic_matter = np.random.normal(3.0, 1.0)
-        sand = np.random.uniform(20, 60)
-        remaining = 100 - sand
-        silt = np.random.uniform(0, remaining)
-        clay = 100 - sand - silt
-        
-        temp = np.random.normal(22, 5)
-        rainfall = np.random.normal(600, 200)
-        humidity = np.random.normal(65, 10)
-        
-        # Simple rule-based best crop assignment
-        if 6.0 <= ph <= 7.5 and temp >= 20 and rainfall >= 400:
-            if nitrogen > 45:
-                best_crop = 'corn'
-            elif phosphorus > 35:
-                best_crop = 'soybean'
-            else:
-                best_crop = 'wheat'
-        elif ph < 6.5 and rainfall > 800:
-            best_crop = 'rice'
-        else:
-            best_crop = np.random.choice(crops)
-        
-        data.append({
-            'ph_level': ph,
-            'nitrogen_ppm': nitrogen,
-            'phosphorus_ppm': phosphorus,
-            'potassium_ppm': potassium,
-            'organic_matter_percent': organic_matter,
-            'sand_percent': sand,
-            'silt_percent': silt,
-            'clay_percent': clay,
-            'avg_temperature': temp,
-            'annual_rainfall': rainfall,
-            'humidity': humidity,
-            'best_crop': best_crop
-        })
-    
-    return pd.DataFrame(data)
+def create_sample_weather_data(location: str = "Iowa, USA") -> WeatherData:
+    """Create sample weather data for testing"""
+    return WeatherData(
+        location=location,
+        avg_temperature=12.0,
+        min_temperature=-15.0,
+        max_temperature=32.0,
+        annual_rainfall=850.0,
+        growing_season_rainfall=450.0,
+        humidity=70.0,
+        wind_speed=15.0,
+        frost_free_days=160,
+        solar_radiation=14.5,
+        photoperiod=13.0,
+        last_frost_date="04-15",
+        first_frost_date="10-15"
+    )
 
 
 if __name__ == "__main__":
     # Example usage
-    from soil_analyzer import SoilSample
+    from src.soil_analyzer import SoilSample
     
     # Create sample data
-    soil_data = {
+    sample_soil = {
         'ph_level': 6.5,
         'nitrogen_ppm': 45,
         'phosphorus_ppm': 28,
         'potassium_ppm': 180,
         'organic_matter_percent': 3.2,
-        'texture_class': 'loam',
-        'sand_percent': 35,
-        'silt_percent': 40,
-        'clay_percent': 25
+        'texture_class': 'loam'
     }
     
-    weather_data = WeatherData(
-        location="Iowa, USA",
-        avg_temperature=22,
-        min_temperature=5,
-        max_temperature=35,
-        annual_rainfall=800,
-        growing_season_rainfall=450,
-        humidity=65,
-        wind_speed=15,
-        frost_free_days=180,
-        solar_radiation=18,
-        photoperiod=14,
-        last_frost_date="04-15",
-        first_frost_date="10-15"
-    )
+    sample_weather = create_sample_weather_data()
     
     # Initialize recommendation engine
     engine = CropRecommendationEngine()
     
     # Get recommendations
-    recommendations = engine.recommend_crops(soil_data, weather_data, farm_size_ha=10)
+    recommendations = engine.recommend_crops(
+        soil_data=sample_soil,
+        weather_data=sample_weather,
+        farm_size=25.0,
+        top_n=3
+    )
     
-    # Display results
-    print(f"\nTop Crop Recommendations:")
+    # Print results
+    print("Top Crop Recommendations:")
     print("=" * 50)
     
     for i, rec in enumerate(recommendations, 1):
         print(f"\n{i}. {rec.crop_profile.name}")
         print(f"   Suitability Score: {rec.suitability_score:.1f}/100")
-        print(f"   Suitability Level: {rec.suitability_level.value}")
+        print(f"   Suitability Level: {rec.suitability_level.value.title()}")
         print(f"   Expected ROI: {rec.expected_roi:.1f}%")
-        print(f"   Positive Factors: {len(rec.positive_factors)}")
-        print(f"   Limiting Factors: {', '.join(rec.limiting_factors) if rec.limiting_factors else 'None'}")
-
+        print(f"   Confidence: {rec.confidence:.1f}%")
+        
+        if rec.positive_factors:
+            print("   ✓ Positive Factors:")
+            for factor in rec.positive_factors[:3]:  # Show top 3
+                print(f"     - {factor}")
+        
+        if rec.limiting_factors:
+            print("   ⚠ Limiting Factors:")
+            for factor in rec.limiting_factors[:2]:  # Show top 2
+                print(f"     - {factor}")
+        
+        print(f"   Key Recommendations:")
+        for tip in rec.management_tips[:3]:  # Show top 3
+            print(f"     - {tip}")
                 factors.append(f"⚠ pH ({soil_ph:.1f}) is acceptable but not optimal")
         
         score += ph_score
