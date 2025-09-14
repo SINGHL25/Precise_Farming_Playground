@@ -1,0 +1,69 @@
+{
+  "sample_id": "FARM_001_FIELD_A",
+  "location": "Corn Belt, Iowa, USA",
+  "date_collected": "2024-03-15",
+  "coordinates": {
+    "latitude": 42.0308,
+    "longitude": -93.6319
+  },
+  "field_info": {
+    "field_name": "North Field",
+    "area_hectares": 25.5,
+    "previous_crop": "soybeans",
+    "tillage_system": "no_till"
+  },
+  "physical_properties": {
+    "sand_percent": 28.5,
+    "silt_percent": 45.2,
+    "clay_percent": 26.3,
+    "bulk_density": 1.28,
+    "moisture_content": 24.8,
+    "texture_class": "loam"
+  },
+  "chemical_properties": {
+    "ph_level": 6.4,
+    "nitrogen_ppm": 42.0,
+    "phosphorus_ppm": 31.5,
+    "potassium_ppm": 195.0,
+    "organic_matter_percent": 3.8,
+    "cation_exchange_capacity": 18.2,
+    "electrical_conductivity": 0.9
+  },
+  "micronutrients": {
+    "calcium_ppm": 2850.0,
+    "magnesium_ppm": 340.0,
+    "sulfur_ppm": 12.8,
+    "iron_ppm": 45.2,
+    "manganese_ppm": 8.7,
+    "zinc_ppm": 1.9,
+    "copper_ppm": 0.8,
+    "boron_ppm": 0.6
+  },
+  "environmental_conditions": {
+    "temperature_celsius": 16.5,
+    "sampling_depth_cm": 20,
+    "weather_conditions": "clear_dry",
+    "days_since_rain": 3
+  },
+  "laboratory_info": {
+    "lab_name": "Iowa State Soil Testing Lab",
+    "test_method": "Mehlich-3",
+    "analyst": "Dr. Sarah Johnson",
+    "quality_control": "passed"
+  },
+  "management_history": {
+    "last_fertilizer_application": "2023-04-10",
+    "fertilizer_type": "10-10-10 NPK",
+    "fertilizer_rate_kg_ha": 280,
+    "lime_application": "2022-10-15",
+    "lime_rate_tons_ha": 2.2,
+    "organic_amendments": [
+      {
+        "type": "compost",
+        "application_date": "2023-09-20",
+        "rate_tons_ha": 5.0
+      }
+    ]
+  },
+  "notes": "Soil sample taken from representative area of field. Field has been in corn-soybean rotation for 8 years. Some compaction noted in wheel tracks."
+}
