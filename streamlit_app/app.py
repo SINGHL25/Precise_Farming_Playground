@@ -9,6 +9,8 @@ Author: Precision Farming Team
 Date: 2024
 License: MIT
 """
+pip cache purge
+pip install -r requirements.txt
 
 import streamlit as st
 import pandas as pd
