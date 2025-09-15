@@ -101,6 +101,8 @@ Precise_Farming_Playground/
 
 
 ```
+<img width="2048" height="2048" alt="Gemini_Generated_Image_wxi6cwwxi6cwwxi6 (1)" src="https://github.com/user-attachments/assets/a6f8eb15-dd1e-4f56-bfba-7164afb79f8f" />
+
 # 🌾 Precision Farming Playground
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
