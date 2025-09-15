@@ -3,6 +3,9 @@ https://claude.ai/public/artifacts/3a7543fa-fea7-4c8b-a6c3-2279abc283ff
 
 
 <iframe src="https://claude.site/public/artifacts/3a7543fa-fea7-4c8b-a6c3-2279abc283ff/embed" title="Claude Artifact" width="100%" height="600" frameborder="0" allow="clipboard-write" allowfullscreen></iframe>
+<img width="2048" height="2048" alt="Gemini_Generated_Image_oiyqtxoiyqtxoiyq" src="https://github.com/user-attachments/assets/4dd5d9ea-4a24-443b-9ea9-c03634596b21" />
+
+
 <img width="2048" height="2048" alt="Gemini_Generated_Image_uqueyzuqueyzuque" src="https://github.com/user-attachments/assets/c8ea7e93-6bb1-41f5-9d04-68bf19566ca0" />
 
 ```Plaintext
