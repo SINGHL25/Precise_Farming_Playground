@@ -1,4 +1,5 @@
 # Project Overview: Precision Farming Playground
+<img width="2048" height="2048" alt="Gemini_Generated_Image_m5lbgsm5lbgsm5lb" src="https://github.com/user-attachments/assets/ad6a408d-70bf-4b49-9535-cb39c85be1cd" />
 
 ## 🌾 Problem Statement
 
